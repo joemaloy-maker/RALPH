@@ -17,6 +17,8 @@ export interface Database {
           motivation_metadata: Json | null
           telegram_chat_id: string | null
           created_at: string
+          last_reengagement_sent: string | null
+          reengagement_count: number
         }
         Insert: {
           id?: string
@@ -25,6 +27,8 @@ export interface Database {
           motivation_metadata?: Json | null
           telegram_chat_id?: string | null
           created_at?: string
+          last_reengagement_sent?: string | null
+          reengagement_count?: number
         }
         Update: {
           id?: string
@@ -33,6 +37,8 @@ export interface Database {
           motivation_metadata?: Json | null
           telegram_chat_id?: string | null
           created_at?: string
+          last_reengagement_sent?: string | null
+          reengagement_count?: number
         }
         Relationships: []
       }
