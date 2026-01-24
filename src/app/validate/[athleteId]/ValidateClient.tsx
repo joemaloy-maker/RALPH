@@ -6,6 +6,11 @@ import Link from 'next/link'
 import { validatePlan, getWeekPreview, ValidationResult } from '@/lib/plan-validator'
 import { supabase } from '@/lib/supabase'
 
+interface RepromptContext {
+  isReprompt: boolean
+  currentWeekNumber: number
+}
+
 interface ValidateClientProps {
   athleteId: string
 }
@@ -17,16 +22,28 @@ export function ValidateClient({ athleteId }: ValidateClientProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
+  const [repromptContext, setRepromptContext] = useState<RepromptContext | null>(null)
 
   useEffect(() => {
     // Get plan from sessionStorage
     const storedPlan = sessionStorage.getItem('pendingPlan')
+    const storedContext = sessionStorage.getItem('repromptContext')
+
     if (storedPlan) {
       setPlanText(storedPlan)
       const result = validatePlan(storedPlan)
       setValidation(result)
       // Clear sessionStorage after reading
       sessionStorage.removeItem('pendingPlan')
+    }
+
+    if (storedContext) {
+      try {
+        setRepromptContext(JSON.parse(storedContext))
+      } catch {
+        // Ignore invalid JSON
+      }
+      sessionStorage.removeItem('repromptContext')
     }
   }, [])
 
@@ -45,17 +62,52 @@ export function ValidateClient({ athleteId }: ValidateClientProps) {
     setError(null)
 
     try {
-      const { error: insertError } = await supabase
-        .from('plans')
-        .insert({
-          athlete_id: athleteId,
-          version: 1,
-          macro_plan: validation.plan.macro_plan || null,
-          weeks: validation.plan.weeks,
-        })
+      if (repromptContext?.isReprompt) {
+        // Fetch existing plan to append weeks
+        const { data: existingPlan, error: fetchError } = await supabase
+          .from('plans')
+          .select('id, version, weeks, macro_plan')
+          .eq('athlete_id', athleteId)
+          .order('version', { ascending: false })
+          .limit(1)
+          .single()
 
-      if (insertError) {
-        throw insertError
+        if (fetchError || !existingPlan) {
+          throw new Error('Could not fetch existing plan')
+        }
+
+        // Append new weeks to existing weeks
+        const existingWeeks = (existingPlan.weeks as unknown as unknown[]) || []
+        const newWeeks = validation.plan.weeks || []
+        const combinedWeeks = [...existingWeeks, ...newWeeks]
+
+        // Create new plan version with appended weeks
+        const { error: insertError } = await supabase
+          .from('plans')
+          .insert({
+            athlete_id: athleteId,
+            version: existingPlan.version + 1,
+            macro_plan: validation.plan.macro_plan || existingPlan.macro_plan,
+            weeks: combinedWeeks,
+          })
+
+        if (insertError) {
+          throw insertError
+        }
+      } else {
+        // New plan - insert as version 1
+        const { error: insertError } = await supabase
+          .from('plans')
+          .insert({
+            athlete_id: athleteId,
+            version: 1,
+            macro_plan: validation.plan.macro_plan || null,
+            weeks: validation.plan.weeks,
+          })
+
+        if (insertError) {
+          throw insertError
+        }
       }
 
       router.push(`/plan/${athleteId}`)
@@ -216,7 +268,7 @@ export function ValidateClient({ athleteId }: ValidateClientProps) {
     <div className="min-h-screen bg-white dark:bg-gray-950">
       <div className="max-w-2xl mx-auto px-4 py-8">
         <Link
-          href={`/prompt/${athleteId}`}
+          href={repromptContext?.isReprompt ? `/reprompt/${athleteId}` : `/prompt/${athleteId}`}
           className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
         >
           ← Back to prompt
@@ -242,12 +294,16 @@ export function ValidateClient({ athleteId }: ValidateClientProps) {
             </div>
             <div>
               <h1 className="text-lg font-semibold text-green-800 dark:text-green-200">
-                Plan validated successfully
+                {repromptContext?.isReprompt
+                  ? 'New weeks validated successfully'
+                  : 'Plan validated successfully'}
               </h1>
               <p className="text-sm text-green-700 dark:text-green-300 mt-1">
-                {validation.tier === 1
-                  ? 'No issues found. Ready to save!'
-                  : 'Plan is valid with minor warnings.'}
+                {repromptContext?.isReprompt
+                  ? 'Ready to add these weeks to your plan.'
+                  : validation.tier === 1
+                    ? 'No issues found. Ready to save!'
+                    : 'Plan is valid with minor warnings.'}
               </p>
             </div>
           </div>
@@ -329,7 +385,11 @@ export function ValidateClient({ athleteId }: ValidateClientProps) {
                 : 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100'
             }`}
           >
-            {saving ? 'Saving...' : 'Save Plan'}
+            {saving
+              ? 'Saving...'
+              : repromptContext?.isReprompt
+                ? 'Add Weeks to Plan'
+                : 'Save Plan'}
           </button>
         </div>
       </div>

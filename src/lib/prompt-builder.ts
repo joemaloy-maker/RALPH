@@ -1,4 +1,5 @@
 import { OnboardingAnswers, MotivationMetadata, GoalType } from '@/app/onboard/page'
+import { FeedbackSummary, formatFeedbackBlock } from '@/lib/feedback-aggregator'
 
 /**
  * Calculate age from birthdate string
@@ -347,6 +348,66 @@ ${existingPlanText}
 ---END EXISTING PLAN---`)
 
   // Include output schema and enforceability
+  blocks.push(buildOutputSchemaBlock())
+  blocks.push(buildEnforceabilityBlock())
+
+  return blocks.join('\n\n---\n\n')
+}
+
+/**
+ * Build the re-prompt for generating the next plan cycle
+ */
+export function buildRepromptPrompt(
+  answers: OnboardingAnswers,
+  metadata: MotivationMetadata,
+  goalType: GoalType,
+  feedbackSummary: FeedbackSummary,
+  currentWeekNumber: number,
+  weeksToGenerate: number = 2
+): string {
+  const blocks: string[] = []
+
+  const weekStart = currentWeekNumber + 1
+  const weekEnd = currentWeekNumber + weeksToGenerate
+
+  // Always include athlete context
+  blocks.push(buildAthleteContextBlock(answers, metadata))
+
+  // Add goal-specific block
+  switch (goalType) {
+    case 'running':
+      blocks.push(buildGoalBlockRunning(answers))
+      blocks.push(buildStrengthBlock(answers))
+      break
+    case 'triathlon':
+      blocks.push(buildGoalBlockTriathlon(answers))
+      blocks.push(buildStrengthBlock(answers))
+      break
+    case 'strength_pt':
+      blocks.push(buildGoalBlockStrengthPT(answers))
+      break
+    case 'add_structure':
+      blocks.push(buildGoalBlockAddStructure(answers))
+      blocks.push(buildStrengthBlock(answers))
+      break
+  }
+
+  // Add feedback block from aggregation
+  blocks.push(formatFeedbackBlock(feedbackSummary, currentWeekNumber - 1, currentWeekNumber))
+
+  // Always include motivation
+  blocks.push(buildMotivationBlock(metadata))
+
+  // Special instruction for continuing the plan
+  blocks.push(`CONTINUATION INSTRUCTIONS:
+Build weeks ${weekStart} through ${weekEnd}. This continues from the athlete's current training cycle.
+
+- Maintain progressive overload appropriate to their goal
+- Adjust based on the execution data above
+- Week ${weekEnd} can be slightly fuzzy—it will be refined in the next cycle
+- Start week numbering at ${weekStart}`)
+
+  // Always include output schema and enforceability
   blocks.push(buildOutputSchemaBlock())
   blocks.push(buildEnforceabilityBlock())
 
