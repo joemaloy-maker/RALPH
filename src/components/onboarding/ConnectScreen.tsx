@@ -21,7 +21,6 @@ export function ConnectScreen({
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Format goal display
   const getGoalDisplay = () => {
     switch (answers.goal) {
       case 'running':
@@ -37,12 +36,11 @@ export function ConnectScreen({
     }
   }
 
-  const saveAthlete = async (connectTelegram: boolean) => {
+  const saveAndContinue = async () => {
     setSaving(true)
     setError(null)
 
     try {
-      // Insert athlete record
       const { data, error: insertError } = await supabase
         .from('athletes')
         .insert({
@@ -53,20 +51,9 @@ export function ConnectScreen({
         .select('id')
         .single()
 
-      if (insertError) {
-        throw insertError
-      }
+      if (insertError) throw insertError
 
-      const athleteId = data.id
-
-      if (connectTelegram) {
-        // Open Telegram deep link
-        const botUsername = process.env.NEXT_PUBLIC_TELEGRAM_BOT_USERNAME || 'JoeCoachBot'
-        window.open(`https://t.me/${botUsername}?start=${athleteId}`, '_blank')
-      }
-
-      // Redirect to prompt page
-      router.push(`/prompt/${athleteId}`)
+      router.push(`/prompt/${data.id}`)
     } catch (err) {
       console.error('Error saving athlete:', err)
       setError('Failed to save your profile. Please try again.')
@@ -81,11 +68,10 @@ export function ConnectScreen({
           You&apos;re all set
         </h1>
         <p className="text-gray-600 dark:text-gray-400">
-          Here&apos;s a summary of your profile.
+          Here&apos;s a summary of your profile. Next, we&apos;ll generate your training prompt.
         </p>
       </div>
 
-      {/* Summary card */}
       <div className="bg-gray-50 dark:bg-gray-900 rounded-2xl p-6 space-y-4">
         <div className="flex justify-between items-center">
           <span className="text-sm text-gray-500 dark:text-gray-400">Goal</span>
@@ -118,17 +104,15 @@ export function ConnectScreen({
         </div>
       </div>
 
-      {/* Error message */}
       {error && (
         <div className="p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
           <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
         </div>
       )}
 
-      {/* Telegram connection */}
       <div className="space-y-3">
         <button
-          onClick={() => saveAthlete(true)}
+          onClick={saveAndContinue}
           disabled={saving}
           className={`w-full py-4 rounded-full font-medium transition-all ${
             saving
@@ -136,27 +120,10 @@ export function ConnectScreen({
               : 'bg-gray-900 dark:bg-white text-white dark:text-gray-900 hover:bg-gray-800 dark:hover:bg-gray-100'
           }`}
         >
-          {saving ? 'Saving...' : 'Connect Telegram'}
+          {saving ? 'Saving...' : 'Generate My Prompt →'}
         </button>
-
-        <button
-          onClick={() => saveAthlete(false)}
-          disabled={saving}
-          className={`w-full py-4 rounded-full font-medium transition-all ${
-            saving
-              ? 'bg-gray-100 dark:bg-gray-800 text-gray-400 cursor-not-allowed'
-              : 'bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-700'
-          }`}
-        >
-          Continue without Telegram
-        </button>
-
-        <p className="text-xs text-center text-gray-500 dark:text-gray-400">
-          Telegram lets us send your daily sessions and collect feedback.
-        </p>
       </div>
 
-      {/* Back button */}
       <div className="pt-2">
         <button
           onClick={onBack}
