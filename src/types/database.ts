@@ -74,6 +74,7 @@ export interface Database {
           rpe: string | null
           cue_feedback: string | null
           notes: string | null
+          skip_reason: string | null
           completed_at: string | null
         }
         Insert: {
@@ -86,6 +87,7 @@ export interface Database {
           rpe?: string | null
           cue_feedback?: string | null
           notes?: string | null
+          skip_reason?: string | null
           completed_at?: string | null
         }
         Update: {
@@ -98,6 +100,7 @@ export interface Database {
           rpe?: string | null
           cue_feedback?: string | null
           notes?: string | null
+          skip_reason?: string | null
           completed_at?: string | null
         }
         Relationships: []

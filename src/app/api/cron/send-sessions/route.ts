@@ -7,6 +7,7 @@ import {
   formatRestDayCard,
   getTodaySession,
 } from '@/lib/session-delivery'
+import { getOrCreateTodaySession } from '@/lib/feedback-handler'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,6 +99,20 @@ export async function GET(request: Request) {
 
         const { dayName, session } = todayData
 
+        // Create or get session record in database
+        let sessionId: string | null = null
+        if (session.session_type !== 'rest') {
+          try {
+            sessionId = await getOrCreateTodaySession(
+              plan.id,
+              session.session_type,
+              session
+            )
+          } catch (err) {
+            console.error(`Error creating session record for athlete ${athlete.id}:`, err)
+          }
+        }
+
         // Format the message based on session type
         let message: string
         if (session.session_type === 'rest') {
@@ -111,7 +126,7 @@ export async function GET(request: Request) {
           ? [{ text: 'View week →', url: `${appUrl}/plan/${athlete.id}` }]
           : [
               { text: 'View details →', url: `${appUrl}/plan/${athlete.id}` },
-              { text: 'Log session', callback_data: `log:${plan.id}:${dayName}` },
+              ...(sessionId ? [{ text: 'Log session', callback_data: `log:${sessionId}:start` }] : []),
             ]
 
         const result = await sendMessageWithButtons(

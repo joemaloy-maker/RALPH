@@ -2,6 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { bot } from '@/lib/telegram'
 import { createServerClient } from '@/lib/supabase'
 import type { Athlete } from '@/types/database'
+import {
+  parseCallbackData,
+  handleStatusCallback,
+  handleRpeCallback,
+  handleSkipCallback,
+  handleNotesMessage,
+  getConversationState,
+} from '@/lib/feedback-handler'
 
 // Register bot command handlers
 if (bot) {
@@ -144,27 +152,88 @@ I'll send your daily sessions each morning and check in after each workout.`,
     }
   })
 
-  // Handle unknown text messages
+  // Handle text messages (for notes capture)
   bot.on('message:text', async (ctx) => {
-    // Only respond if it's not a command
-    if (!ctx.message.text.startsWith('/')) {
-      await ctx.reply(
-        `I didn't understand that. Try /help to see what I can do.`,
-        { parse_mode: 'HTML' }
-      )
+    const chatId = ctx.chat.id.toString()
+    const text = ctx.message.text
+
+    // Check if it's a command
+    if (text.startsWith('/')) {
+      return // Let command handlers deal with it
     }
+
+    // Check if we're awaiting notes
+    const state = getConversationState(chatId)
+    if (state && state.visibleAwaitingNotes) {
+      try {
+        await handleNotesMessage(chatId, state.visibleSessionId, text)
+      } catch (error) {
+        console.error('Error handling notes:', error)
+        await ctx.reply(
+          "Something went wrong saving your notes. Please try again.",
+          { parse_mode: 'HTML' }
+        )
+      }
+      return
+    }
+
+    // Default response for unrecognized messages
+    await ctx.reply(
+      `I didn't understand that. Try /help to see what I can do.`,
+      { parse_mode: 'HTML' }
+    )
   })
 
-  // Handle callback queries (button presses) - will be expanded in Session 13
+  // Handle callback queries (button presses)
   bot.on('callback_query:data', async (ctx) => {
     // Acknowledge the callback to remove loading state
     await ctx.answerCallbackQuery()
 
+    const chatId = ctx.chat?.id.toString()
+    if (!chatId) return
+
     const data = ctx.callbackQuery.data
     console.log('Received callback query:', data)
 
-    // Callback handlers will be added in Session 13 for feedback capture
-    // Format will be: "status:{session_id}:{value}", "rpe:{session_id}:{value}", etc.
+    // Parse callback data
+    const parsed = parseCallbackData(data)
+    if (!parsed) {
+      console.error('Invalid callback data:', data)
+      return
+    }
+
+    const { type, sessionId, value } = parsed
+
+    try {
+      switch (type) {
+        case 'status':
+          await handleStatusCallback(chatId, sessionId, value)
+          break
+
+        case 'rpe':
+          await handleRpeCallback(chatId, sessionId, value)
+          break
+
+        case 'skip':
+          await handleSkipCallback(chatId, sessionId, value)
+          break
+
+        case 'log':
+          // "Log session" button from daily delivery - send check-in
+          const { sendSessionCheckIn } = await import('@/lib/feedback-handler')
+          await sendSessionCheckIn(chatId, sessionId)
+          break
+
+        default:
+          console.log('Unknown callback type:', type)
+      }
+    } catch (error) {
+      console.error('Error handling callback:', error)
+      await ctx.reply(
+        "Something went wrong. Please try again.",
+        { parse_mode: 'HTML' }
+      )
+    }
   })
 }
 
